@@ -363,6 +363,32 @@ input[type='range'] {
   grid-template-columns: 1fr;
 }
 
+.stacked-options .mcq-option {
+  min-height: 86px;
+  text-align: left;
+}
+
+.wrapped-formula {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 10px;
+  line-height: 1.55;
+}
+
+.formula-piece {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.formula-plus {
+  color: #60736c;
+  font-weight: 800;
+}
+
 .concept-grid {
   display: grid;
   gap: 12px;
@@ -601,6 +627,19 @@ input[type='range'] {
 
   .mcq-grid {
     grid-template-columns: 1fr;
+  }
+
+  .stacked-options .mcq-option {
+    padding: 16px 14px;
+  }
+
+  .wrapped-formula {
+    justify-content: flex-start;
+    gap: 6px 8px;
+  }
+
+  .wrapped-formula .katex {
+    font-size: clamp(1.05rem, 4.4vw, 1.35rem);
   }
 
   .remark-grid {

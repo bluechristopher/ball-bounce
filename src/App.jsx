@@ -102,6 +102,21 @@ function SvgIntervalLabel({ x, y, mode, step, dropTime, height, ratio, visible }
   )
 }
 
+function WrappedFormula({ math }) {
+  const parts = math.split('+')
+
+  return (
+    <span className="wrapped-formula">
+      {parts.map((part, index) => (
+        <span className="formula-piece" key={`${part}-${index}`}>
+          {index > 0 && <span className="formula-plus">+</span>}
+          <InlineMath math={part} />
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function App() {
   const [dropTime, setDropTime] = useState(3)
   const [ratio, setRatio] = useState(0.9)
@@ -875,7 +890,7 @@ function App() {
                   } ${firstIntervalChoice === option.id && !option.correct ? 'wrong' : ''}`}
                   onClick={() => chooseFirstInterval(option)}
                 >
-                  <BlockMath math={option.latex} />
+                  <WrappedFormula math={option.latex} />
                 </button>
               ))}
             </div>
