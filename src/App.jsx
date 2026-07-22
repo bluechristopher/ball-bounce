@@ -44,76 +44,90 @@ function shuffleOptions(options, seed) {
   return shuffled
 }
 
-const optionFeedback = {
-  'first-correct': 'Correct. The ball travels up and down, so the bounce interval is twice the time to maximum height.',
-  'first-no-two': 'This finds only one half of the bounce. The ball must go up and come back down, so multiply by 2.',
-  'first-shift': 'This uses the next power. From the 1st to 2nd bounce, use the first bounce factor.',
-  'first-original': 'This is only the initial drop value. After the first bounce, the interval follows the bounce factor and includes the up-and-down journey.',
-  'second-correct': 'Correct. The next interval keeps the same structure, with the next power in the pattern.',
-  'second-no-two': 'This again counts only one half of the motion. Each interval between bounces includes going up and coming down.',
-  'second-shift-back': 'This repeats the previous interval. The 2nd to 3rd bounce should use the next power.',
-  'second-linear': 'This jumps one power too far. Track the pattern one bounce at a time.',
-  'time-correct': 'Correct. The interval ending at the nth bounce has exponent n - 1.',
-  'time-shift': 'This is one bounce too far. The interval from the (n-1)th to nth bounce ends at bounce n, so the power is n - 1.',
-  'time-missing-two': 'This counts only the upward trip. Between bounces, the ball goes up and comes down, so the factor of 2 is needed.',
-  'time-square': 'This treats the time ratio as if it were squared. For time, the common ratio is r, not r squared.',
-  'distance-correct': 'Correct. The distance factor is r, so the interval ending at the nth bounce has exponent n - 1.',
-  'distance-time-ratio': 'This squares the factor unnecessarily. In distance mode, r is already the height or distance factor.',
-  'distance-shift': 'This is one interval too far. The interval from the (n-1)th to nth bounce uses power n - 1.',
-  'distance-missing-two': 'This counts only the upward distance. Between bounces, the ball travels up and down, so multiply by 2.',
-  'setup-correct': 'Correct. Writing the full expression makes the structure visible before using any formula.',
-  'setup-first-as-bounce': 'The first term is not another bounce interval. It is the initial drop before any bounce happens.',
-  'setup-wrong-last': 'The last term is too far along. Check the sketch: up to the nth bounce, the final bounce interval has power n - 1.',
-  'terms-correct': 'Correct. The powers run from 0 to n - 2, so there are n - 1 terms.',
-  'terms-n': 'Close, but count the powers carefully: 0, 1, 2, ..., n - 2 gives n - 1 terms.',
-  'terms-n-minus-2': 'This mistakes the last power for the number of terms. Starting from power 0 adds one more term.',
-  'terms-two-n': 'The factor 2 is part of each bounce interval, not the number of terms in the bracket.',
-  'concept-correct': 'Exactly. Do not use S_n indiscriminately; first separate what actually belongs to the GP.',
-  'concept-same-ratio': 'The bounce intervals do have a common ratio. The issue is that the initial drop is not part of that GP.',
-  'concept-too-many': 'There are finitely many intervals up to the nth bounce. The difficulty is identifying which terms belong to the GP.',
-  'concept-no-formula': 'GP formulas do work here, but only after the expression is set up correctly from the sketch.',
-  'total-correct': 'Well done for completing the questions!',
-  'total-no-initial': 'This is only the GP part. The initial drop term must be added separately.',
-  'total-wrong-last': 'This uses the wrong final power. Revisit the term-count checkpoint: the bracket has n - 1 terms.',
-  'total-add-tail': 'The tail term should be subtracted after applying the finite GP formula, not added.',
-  'interval-first-correct': 'Correct. The interval between the 2nd and 3rd bounce is T_1 times r.',
-  'interval-first-no-r': 'This forgets to multiply by the bounce factor r.',
-  'interval-first-shift': 'This advances two powers instead of one.',
-  'interval-first-two': 'T_1 already represents the full 1st bounce interval (up and down), so do not multiply by 2.',
-  'interval-second-correct': 'Correct. The interval between the 3rd and 4th bounce is T_1 times r^2.',
-  'interval-second-no-r': 'This repeats the previous bounce interval.',
-  'interval-second-shift': 'This jumps one power too far along the progression.',
-  'interval-second-two': 'T_1 already includes both upward and downward motion.',
-  'interval-time-correct': 'Correct. The interval between the nth and (n+1)th bounce has exponent n - 1.',
-  'interval-time-shift': 'This is one bounce too far along.',
-  'interval-time-two': 'T_1 is already the full bounce interval, so no extra factor of 2 is needed.',
-  'interval-time-square': 'The time factor is r, not r squared.',
-  'interval-setup-correct': 'Correct. Measuring from the 1st bounce means every term belongs to the GP starting at T_1.',
-  'interval-setup-drop': 'Measuring from the 1st bounce excludes the initial drop before the 1st bounce.',
-  'interval-setup-wrong-last': 'Up to the nth bounce, the final bounce interval has power n - 2.',
-  'interval-terms-correct': 'Correct. Powers run from 0 to n - 2, so there are n - 1 terms.',
-  'interval-terms-n': 'Count carefully: powers 0, 1, ..., n - 2 give n - 1 terms.',
-  'interval-terms-n-minus-2': 'Starting from power 0 adds one more term than the last exponent.',
-  'interval-terms-two-n': 'There are n - 1 terms in the bracket.',
-  'interval-concept-correct': 'Exactly! Measuring from the 1st bounce means every term belongs directly to the GP without an initial drop term.',
-  'interval-concept-drop': 'The initial drop is excluded when measuring from the 1st bounce.',
-  'interval-concept-inf': 'There are a finite number of bounce intervals.',
-  'interval-concept-no-formula': 'GP formulas apply cleanly here.',
-  'interval-total-correct': 'Well done! That is the simplified total time formula from the 1st to nth bounce.',
-  'interval-total-wrong-exp': 'Check the exponent: the GP has n - 1 terms, so the power is n - 1.',
-  'interval-total-with-drop': 'Measuring from the 1st bounce means we do not include the initial drop.',
-  'interval-total-add': 'The GP sum formula subtracts r^(n-1) inside the bracket.',
+function getOptionFeedback(id, mode) {
+  const isDist = mode === 'distance'
+  const feedbacks = {
+    'first-correct': isDist
+      ? 'Correct. The ball travels up and down, so the bounce distance is twice the height reached after the bounce.'
+      : 'Correct. The ball travels up and down, so the bounce interval is twice the time to maximum height.',
+    'first-no-two': isDist
+      ? 'This finds only the upward distance. The ball must go up and come back down, so multiply by 2.'
+      : 'This finds only one half of the bounce. The ball must go up and come back down, so multiply by 2.',
+    'first-shift': 'This uses the next power. From the 1st to 2nd bounce, use the first bounce factor.',
+    'first-original': isDist
+      ? 'This is only the initial drop height. After the first bounce, the distance follows the bounce factor and includes the up-and-down journey.'
+      : 'This is only the initial drop value. After the first bounce, the interval follows the bounce factor and includes the up-and-down journey.',
+    'second-correct': 'Correct. The next interval keeps the same structure, with the next power in the pattern.',
+    'second-no-two': 'This again counts only one half of the motion. Each interval between bounces includes going up and coming down.',
+    'second-shift-back': 'This repeats the previous interval. The 2nd to 3rd bounce should use the next power.',
+    'second-linear': 'This jumps one power too far. Track the pattern one bounce at a time.',
+    'time-correct': 'Correct. The interval ending at the nth bounce has exponent n - 1.',
+    'time-shift': 'This is one bounce too far. The interval from the (n-1)th to nth bounce ends at bounce n, so the power is n - 1.',
+    'time-missing-two': 'This counts only the upward trip. Between bounces, the ball goes up and comes down, so the factor of 2 is needed.',
+    'time-square': 'This treats the time ratio as if it were squared. For time, the common ratio is r, not r squared.',
+    'distance-correct': 'Correct. The distance factor is r, so the interval ending at the nth bounce has exponent n - 1.',
+    'distance-time-ratio': 'This squares the factor unnecessarily. In distance mode, r is already the height or distance factor.',
+    'distance-shift': 'This is one interval too far. The interval from the (n-1)th to nth bounce uses power n - 1.',
+    'distance-missing-two': 'This counts only the upward distance. Between bounces, the ball travels up and down, so multiply by 2.',
+    'setup-correct': 'Correct. Writing the full expression makes the structure visible before using any formula.',
+    'setup-first-as-bounce': isDist
+      ? 'The first term is not another bounce interval. It is the initial drop height before any bounce happens.'
+      : 'The first term is not another bounce interval. It is the initial drop before any bounce happens.',
+    'setup-wrong-last': 'The last term is too far along. Check the sketch: up to the nth bounce, the final bounce interval has power n - 1.',
+    'terms-correct': 'Correct. The powers run from 0 to n - 2, so there are n - 1 terms.',
+    'terms-n': 'Close, but count the powers carefully: 0, 1, 2, ..., n - 2 gives n - 1 terms.',
+    'terms-n-minus-2': 'This mistakes the last power for the number of terms. Starting from power 0 adds one more term.',
+    'terms-two-n': 'The factor 2 is part of each bounce interval, not the number of terms in the bracket.',
+    'concept-correct': 'Exactly. Do not use S_n indiscriminately; first separate what actually belongs to the GP.',
+    'concept-same-ratio': 'The bounce intervals do have a common ratio. The issue is that the initial drop is not part of that GP.',
+    'concept-too-many': 'There are finitely many intervals up to the nth bounce. The difficulty is identifying which terms belong to the GP.',
+    'concept-no-formula': 'GP formulas do work here, but only after the expression is set up correctly from the sketch.',
+    'total-correct': 'Well done for completing the questions!',
+    'total-no-initial': isDist
+      ? 'This is only the GP part. The initial drop height must be added separately.'
+      : 'This is only the GP part. The initial drop term must be added separately.',
+    'total-wrong-last': 'This uses the wrong final power. Revisit the term-count checkpoint: the bracket has n - 1 terms.',
+    'total-add-tail': 'The tail term should be subtracted after applying the finite GP formula, not added.',
+    'interval-first-correct': 'Correct. The interval between the 2nd and 3rd bounce is T_1 times r.',
+    'interval-first-no-r': 'This forgets to multiply by the bounce factor r.',
+    'interval-first-shift': 'This advances two powers instead of one.',
+    'interval-first-two': 'T_1 already represents the full 1st bounce interval (up and down), so do not multiply by 2.',
+    'interval-second-correct': 'Correct. The interval between the 3rd and 4th bounce is T_1 times r^2.',
+    'interval-second-no-r': 'This repeats the previous bounce interval.',
+    'interval-second-shift': 'This jumps one power too far along the progression.',
+    'interval-second-two': 'T_1 already includes both upward and downward motion.',
+    'interval-time-correct': 'Correct. The interval between the nth and (n+1)th bounce has exponent n - 1.',
+    'interval-time-shift': 'This is one bounce too far along.',
+    'interval-time-two': 'T_1 is already the full bounce interval, so no extra factor of 2 is needed.',
+    'interval-time-square': 'The time factor is r, not r squared.',
+    'interval-setup-correct': 'Correct. Measuring from the 1st bounce means every term belongs to the GP starting at T_1.',
+    'interval-setup-drop': 'Measuring from the 1st bounce excludes the initial drop before the 1st bounce.',
+    'interval-setup-wrong-last': 'Up to the nth bounce, the final bounce interval has power n - 2.',
+    'interval-terms-correct': 'Correct. Powers run from 0 to n - 2, so there are n - 1 terms.',
+    'interval-terms-n': 'Count carefully: powers 0, 1, ..., n - 2 give n - 1 terms.',
+    'interval-terms-n-minus-2': 'Starting from power 0 adds one more term than the last exponent.',
+    'interval-terms-two-n': 'There are n - 1 terms in the bracket.',
+    'interval-concept-correct': 'Exactly! Measuring from the 1st bounce means every term belongs directly to the GP without an initial drop term.',
+    'interval-concept-drop': 'The initial drop is excluded when measuring from the 1st bounce.',
+    'interval-concept-inf': 'There are a finite number of bounce intervals.',
+    'interval-concept-no-formula': 'GP formulas apply cleanly here.',
+    'interval-total-correct': 'Well done! That is the simplified total time formula from the 1st to nth bounce.',
+    'interval-total-wrong-exp': 'Check the exponent: the GP has n - 1 terms, so the power is n - 1.',
+    'interval-total-with-drop': 'Measuring from the 1st bounce means we do not include the initial drop.',
+    'interval-total-add': 'The GP sum formula subtracts r^(n-1) inside the bracket.',
+  }
+  return feedbacks[id] || ''
 }
 
 function SvgIntervalLabel({ x, y, mode, timeSubMode, step, dropTime, firstInterval, height, ratio, visible }) {
   const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
-  const unit = mode === 'time' ? 's' : ''
+  const unit = mode === 'time' ? 's' : 'm'
 
   if (step === 0) {
     if (isIntervalMode) {
       return null
     }
-    const dropText = mode === 'time' ? `${round(dropTime, 1)} s` : `${round(height, 1)}`
+    const dropText = mode === 'time' ? `${round(dropTime, 1)} s` : `${round(height, 1)} m`
     return (
       <text x={x} y={y} textAnchor="middle" className={`reveal-label ${visible ? 'show' : ''}`}>
         {dropText}
@@ -782,7 +796,7 @@ function App() {
     setAnswerPopup({
       checkpoint: 'general',
       correct: option.correct,
-      message: optionFeedback[option.id],
+      message: getOptionFeedback(option.id, mode),
     })
   }
 
@@ -793,7 +807,7 @@ function App() {
     setAnswerPopup({
       checkpoint: 'first',
       correct: option.correct,
-      message: optionFeedback[option.id],
+      message: getOptionFeedback(option.id, mode),
     })
   }
 
@@ -804,7 +818,7 @@ function App() {
     setAnswerPopup({
       checkpoint: 'second',
       correct: option.correct,
-      message: optionFeedback[option.id],
+      message: getOptionFeedback(option.id, mode),
     })
   }
 
@@ -837,7 +851,7 @@ function App() {
     setAnswerPopup({
       checkpoint: 'setup',
       correct: option.correct,
-      message: optionFeedback[option.id],
+      message: getOptionFeedback(option.id, mode),
     })
   }
 
@@ -848,7 +862,7 @@ function App() {
     setAnswerPopup({
       checkpoint: 'termCount',
       correct: option.correct,
-      message: optionFeedback[option.id],
+      message: getOptionFeedback(option.id, mode),
     })
   }
 
@@ -859,7 +873,7 @@ function App() {
     setAnswerPopup({
       checkpoint: 'concept',
       correct: option.correct,
-      message: optionFeedback[option.id],
+      message: getOptionFeedback(option.id, mode),
     })
   }
 
@@ -873,7 +887,7 @@ function App() {
     setAnswerPopup({
       checkpoint: 'final',
       correct: option.correct,
-      message: optionFeedback[option.id],
+      message: getOptionFeedback(option.id, mode),
     })
   }
 
@@ -1502,7 +1516,7 @@ function App() {
               <h2>
                 {mode === 'time' && timeSubMode === 'interval'
                   ? 'What is the final simplified total time formula from the 1st bounce to the nth bounce (S₁→ₙ)?'
-                  : 'What is the final simplified expression in terms of n?'}
+                  : `What is the final simplified ${mode === 'time' ? 'total time' : 'total distance'} expression in terms of n?`}
               </h2>
               <div className="mcq-grid">
                 {finalOptions.map((option) => (
