@@ -76,23 +76,77 @@ const optionFeedback = {
   'total-no-initial': 'This is only the GP part. The initial drop term must be added separately.',
   'total-wrong-last': 'This uses the wrong final power. Revisit the term-count checkpoint: the bracket has n - 1 terms.',
   'total-add-tail': 'The tail term should be subtracted after applying the finite GP formula, not added.',
+  'interval-first-correct': 'Correct. The interval between the 2nd and 3rd bounce is T_1 times r.',
+  'interval-first-no-r': 'This forgets to multiply by the bounce factor r.',
+  'interval-first-shift': 'This advances two powers instead of one.',
+  'interval-first-two': 'T_1 already represents the full 1st bounce interval (up and down), so do not multiply by 2.',
+  'interval-second-correct': 'Correct. The interval between the 3rd and 4th bounce is T_1 times r^2.',
+  'interval-second-no-r': 'This repeats the previous bounce interval.',
+  'interval-second-shift': 'This jumps one power too far along the progression.',
+  'interval-second-two': 'T_1 already includes both upward and downward motion.',
+  'interval-time-correct': 'Correct. The interval between the nth and (n+1)th bounce has exponent n - 1.',
+  'interval-time-shift': 'This is one bounce too far along.',
+  'interval-time-two': 'T_1 is already the full bounce interval, so no extra factor of 2 is needed.',
+  'interval-time-square': 'The time factor is r, not r squared.',
+  'interval-setup-correct': 'Correct. Measuring from the 1st bounce means every term belongs to the GP starting at T_1.',
+  'interval-setup-drop': 'Measuring from the 1st bounce excludes the initial drop before the 1st bounce.',
+  'interval-setup-wrong-last': 'Up to the nth bounce, the final bounce interval has power n - 2.',
+  'interval-terms-correct': 'Correct. Powers run from 0 to n - 2, so there are n - 1 terms.',
+  'interval-terms-n': 'Count carefully: powers 0, 1, ..., n - 2 give n - 1 terms.',
+  'interval-terms-n-minus-2': 'Starting from power 0 adds one more term than the last exponent.',
+  'interval-terms-two-n': 'There are n - 1 terms in the bracket.',
+  'interval-concept-correct': 'Exactly! Measuring from the 1st bounce means every term belongs directly to the GP without an initial drop term.',
+  'interval-concept-drop': 'The initial drop is excluded when measuring from the 1st bounce.',
+  'interval-concept-inf': 'There are a finite number of bounce intervals.',
+  'interval-concept-no-formula': 'GP formulas apply cleanly here.',
+  'interval-total-correct': 'Well done! That is the simplified total time formula from the 1st to nth bounce.',
+  'interval-total-wrong-exp': 'Check the exponent: the GP has n - 1 terms, so the power is n - 1.',
+  'interval-total-with-drop': 'Measuring from the 1st bounce means we do not include the initial drop.',
+  'interval-total-add': 'The GP sum formula subtracts r^(n-1) inside the bracket.',
 }
 
-function SvgIntervalLabel({ x, y, mode, step, dropTime, height, ratio, visible }) {
-  const leading = mode === 'time' ? `2(${round(dropTime, 1)})(${round(ratio)})` : `2(${round(height, 1)})(${round(ratio)})`
+function SvgIntervalLabel({ x, y, mode, timeSubMode, step, dropTime, firstInterval, height, ratio, visible }) {
+  const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
   const unit = mode === 'time' ? 's' : ''
-  const exponent = step
 
   if (step === 0) {
+    if (isIntervalMode) {
+      return null
+    }
+    const dropText = mode === 'time' ? `${round(dropTime, 1)} s` : `${round(height, 1)}`
     return (
-      <text x={x} y={y} className={`reveal-label ${visible ? 'show' : ''}`}>
-        {mode === 'time' ? `${round(dropTime, 1)} s` : `${round(height, 1)}`}
+      <text x={x} y={y} textAnchor="middle" className={`reveal-label ${visible ? 'show' : ''}`}>
+        {dropText}
       </text>
     )
   }
 
+  if (isIntervalMode) {
+    if (step === 1) {
+      return (
+        <text x={x} y={y} textAnchor="middle" className={`reveal-label ${visible ? 'show' : ''}`}>
+          {`${round(firstInterval, 1)} s`}
+        </text>
+      )
+    }
+    const leading = `(${round(firstInterval, 1)})(${round(ratio)})`
+    const exponent = step - 1
+    return (
+      <text x={x} y={y} textAnchor="middle" className={`reveal-label ${visible ? 'show' : ''}`}>
+        {leading}
+        <tspan dy="-7" className="svg-sup">
+          {exponent}
+        </tspan>
+        {unit && <tspan dy="7"> {unit}</tspan>}
+      </text>
+    )
+  }
+
+  const leading = mode === 'time' ? `2(${round(dropTime, 1)})(${round(ratio)})` : `2(${round(height, 1)})(${round(ratio)})`
+  const exponent = step
+
   return (
-    <text x={x} y={y} className={`reveal-label ${visible ? 'show' : ''}`}>
+    <text x={x} y={y} textAnchor="middle" className={`reveal-label ${visible ? 'show' : ''}`}>
       {leading}
       <tspan dy="-7" className="svg-sup">
         {exponent}
@@ -119,9 +173,24 @@ function WrappedFormula({ math }) {
 
 function App() {
   const [dropTime, setDropTime] = useState(3)
+  const [firstInterval, setFirstInterval] = useState(2)
+  const [timeSubMode, setTimeSubMode] = useState('drop')
   const [ratio, setRatio] = useState(0.9)
   const [height, setHeight] = useState(1.2)
   const [mode, setMode] = useState('time')
+  const [zoom, setZoom] = useState(100)
+
+  function handleZoomIn() {
+    setZoom((current) => Math.min(150, current + 10))
+  }
+
+  function handleZoomOut() {
+    setZoom((current) => Math.max(50, current - 10))
+  }
+
+  function handleZoomReset() {
+    setZoom(100)
+  }
   const [isRunning, setIsRunning] = useState(false)
   const [animationPhase, setAnimationPhase] = useState('idle')
   const [elapsed, setElapsed] = useState(0)
@@ -192,21 +261,28 @@ function App() {
     playAudio(isCorrect ? correctAudioRef.current : wrongAudioRef.current)
   }
 
+  const effectiveDropTime = useMemo(() => {
+    if (mode === 'time' && timeSubMode === 'interval') {
+      return firstInterval / (2 * ratio)
+    }
+    return dropTime
+  }, [mode, timeSubMode, firstInterval, ratio, dropTime])
+
   const flightSegments = useMemo(() => {
     let cursor = 0
     const first = {
       kind: 'drop',
       startTime: 0,
-      endTime: dropTime,
+      endTime: effectiveDropTime,
       fromX: START_X,
       toX: bounceXs[0],
       heightRatio: 1,
     }
-    cursor = dropTime
+    cursor = effectiveDropTime
 
     const bounces = Array.from({ length: bounceXs.length - 1 }, (_, index) => {
       const bounceNumber = index + 1
-      const halfTime = dropTime * ratio ** bounceNumber
+      const halfTime = effectiveDropTime * ratio ** bounceNumber
       const visualScale = bounceNumber > CONCRETE_BOUNCES ? GENERAL_BOUNCE_HEIGHT_SCALE : 1
       const segment = {
         kind: 'bounce',
@@ -222,7 +298,7 @@ function App() {
     })
 
     return { list: [first, ...bounces], total: cursor }
-  }, [bounceXs, dropTime, ratio])
+  }, [bounceXs, effectiveDropTime, ratio])
 
   const visibleArcs = useMemo(() => {
     const drop = `M ${START_X} ${DROP_TOP_Y} Q ${(START_X + bounceXs[0]) / 2} ${DROP_TOP_Y} ${bounceXs[0]} ${GROUND_Y}`
@@ -241,17 +317,40 @@ function App() {
     }
   }, [bounceXs, ratio])
 
+  const activeArcIndex = useMemo(() => {
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
+    if (animationPhase === 'pausedFirst') return isIntervalMode ? 1 : 0
+    if (animationPhase === 'pausedSecond') return isIntervalMode ? 2 : 1
+    if (animationPhase === 'pausedNth') return 4
+    return -1
+  }, [animationPhase, mode, timeSubMode])
+
+  const highlightedArcPath = useMemo(() => {
+    if (activeArcIndex < 0 || activeArcIndex >= bounceXs.length - 1) return null
+    const fromX = bounceXs[activeArcIndex]
+    const toX = bounceXs[activeArcIndex + 1]
+    const bounceNumber = activeArcIndex + 1
+    const visualScale = bounceNumber > CONCRETE_BOUNCES ? GENERAL_BOUNCE_HEIGHT_SCALE : 1
+    const peakY = GROUND_Y - 188 * ratio ** bounceNumber * visualScale
+    return `M ${fromX} ${GROUND_Y} Q ${(fromX + toX) / 2} ${2 * peakY - GROUND_Y} ${toX} ${GROUND_Y}`
+  }, [activeArcIndex, bounceXs, ratio])
+
   useEffect(() => {
     if (!isRunning) return undefined
 
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
     const targetElapsed =
       animationPhase === 'runningToFirst'
-        ? flightSegments.list[1].endTime
-        : animationPhase === 'runningToSecond'
+        ? isIntervalMode
           ? flightSegments.list[2].endTime
+          : flightSegments.list[1].endTime
+        : animationPhase === 'runningToSecond'
+          ? isIntervalMode
+            ? flightSegments.list[3].endTime
+            : flightSegments.list[2].endTime
           : animationPhase === 'runningToNth'
             ? flightSegments.list[5].endTime
-          : flightSegments.total
+            : flightSegments.total
 
     const tick = (time) => {
       if (!startRef.current) startRef.current = time
@@ -281,7 +380,7 @@ function App() {
 
     const frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [animationPhase, flightSegments.list, flightSegments.total, isRunning])
+  }, [animationPhase, flightSegments.list, flightSegments.total, isRunning, mode, timeSubMode])
 
   const ball = useMemo(() => {
     const segment = flightSegments.list.find((item) => elapsed <= item.endTime) ?? flightSegments.list.at(-1)
@@ -329,18 +428,30 @@ function App() {
   }, [elapsed, flightSegments.list])
 
   const visibleIntervals = {
-    firstDrop: revealState.interval >= 1,
-    firstBounce: revealedAnswers.first || revealState.interval >= 2,
-    secondBounce: revealedAnswers.second || revealState.interval >= 3,
-    thirdBounce: revealState.interval >= 4,
+    firstDrop: revealState.interval >= 1 || hasPlayed,
+    firstBounce: revealedAnswers.first || hasPlayed,
+    secondBounce: revealedAnswers.second || hasPlayed,
+    thirdBounce: revealState.interval >= 4 || hasPlayed,
   }
 
   const mcqOptions = useMemo(() => {
-    const t = round(dropTime, 1)
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
+    const t = round(isIntervalMode ? firstInterval : dropTime, 1)
     const h = round(height, 1)
     const r = round(ratio)
 
     if (mode === 'time') {
+      if (isIntervalMode) {
+        return shuffleOptions(
+          [
+            { id: 'interval-time-correct', latex: `(${t})(${r})^{n-1}`, correct: true },
+            { id: 'interval-time-shift', latex: `(${t})(${r})^n`, correct: false },
+            { id: 'interval-time-two', latex: `2(${t})(${r})^{n-1}`, correct: false },
+            { id: 'interval-time-square', latex: `(${t})(${r})^{2(n-1)}`, correct: false },
+          ],
+          shuffleSeed + 11,
+        )
+      }
       return shuffleOptions(
         [
           { id: 'time-correct', latex: `2(${t})(${r})^{n-1}`, correct: true },
@@ -361,13 +472,37 @@ function App() {
       ],
       shuffleSeed + 12,
     )
-  }, [dropTime, height, mode, ratio, shuffleSeed])
+  }, [dropTime, firstInterval, height, mode, timeSubMode, ratio, shuffleSeed])
 
   const concreteIntervalOptions = useMemo(() => {
-    const base = mode === 'time' ? round(dropTime, 1) : round(height, 1)
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
+    const base = isIntervalMode ? round(firstInterval, 1) : mode === 'time' ? round(dropTime, 1) : round(height, 1)
     const r = round(ratio)
     const firstPower = '1'
     const secondPower = '2'
+
+    if (isIntervalMode) {
+      return {
+        first: shuffleOptions(
+          [
+            { id: 'interval-first-correct', latex: `(${base})(${r})^{${firstPower}}`, correct: true },
+            { id: 'interval-first-no-r', latex: `${base}`, correct: false },
+            { id: 'interval-first-shift', latex: `(${base})(${r})^{${secondPower}}`, correct: false },
+            { id: 'interval-first-two', latex: `2(${base})(${r})^{${firstPower}}`, correct: false },
+          ],
+          shuffleSeed + 21,
+        ),
+        second: shuffleOptions(
+          [
+            { id: 'interval-second-correct', latex: `(${base})(${r})^{${secondPower}}`, correct: true },
+            { id: 'interval-second-no-r', latex: `(${base})(${r})^{${firstPower}}`, correct: false },
+            { id: 'interval-second-shift', latex: `(${base})(${r})^3`, correct: false },
+            { id: 'interval-second-two', latex: `2(${base})(${r})^{${secondPower}}`, correct: false },
+          ],
+          shuffleSeed + 22,
+        ),
+      }
+    }
 
     return {
       first: shuffleOptions(
@@ -389,14 +524,38 @@ function App() {
         shuffleSeed + 22,
       ),
     }
-  }, [dropTime, height, mode, ratio, shuffleSeed])
+  }, [dropTime, firstInterval, height, mode, timeSubMode, ratio, shuffleSeed])
 
   const numericWork = useMemo(() => {
-    const base = mode === 'time' ? dropTime : height
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
+    const base = isIntervalMode ? firstInterval : mode === 'time' ? dropTime : height
     const baseText = round(base, 1)
     const rText = round(ratio)
     const gpRatio = ratio
     const gpRatioText = round(gpRatio, 4)
+
+    if (isIntervalMode) {
+      const multiplier = firstInterval / (1 - gpRatio)
+      const multiplierText = round(multiplier, 4)
+      const effectiveDropText = round(effectiveDropTime, 1)
+      const terms = `${baseText}+(${baseText})(${rText})^1+(${baseText})(${rText})^2+...+(${baseText})(${rText})^{n-2}`
+      const setupWrongDrop = `${effectiveDropText}+${baseText}+(${baseText})(${rText})^1+...+(${baseText})(${rText})^{n-2}`
+      const setupWrongLast = `${baseText}+(${baseText})(${rText})^1+(${baseText})(${rText})^2+...+(${baseText})(${rText})^{n-1}`
+
+      return {
+        baseText,
+        rText,
+        gpRatioText,
+        multiplierText,
+        effectiveDropText,
+        terms,
+        setupWrongDrop,
+        setupWrongLast,
+        bracketComplete: `1+${rText}^1+${rText}^2+...+${rText}^{n-2}`,
+        simplifiedLine: `${multiplierText}(1-${rText}^{n-1})`,
+      }
+    }
+
     const coefficient = 2 * base * gpRatio
     const coefficientText = round(coefficient, 4)
     const denominator = 1 - gpRatio
@@ -426,98 +585,157 @@ function App() {
       bracketComplete: `1+${gpRatioText}+${gpRatioText}^2+...+${gpRatioText}^{n-2}`,
       simplifiedLine: `${simplifiedConstantText}-${multiplierText}(${gpRatioText})^{n-1}`,
     }
-  }, [dropTime, height, mode, ratio])
+  }, [dropTime, firstInterval, height, mode, timeSubMode, ratio, effectiveDropTime])
 
-  const totalOptions = useMemo(
-    () =>
-      shuffleOptions(
+  const totalOptions = useMemo(() => {
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
+    if (isIntervalMode) {
+      return shuffleOptions(
         [
-          { id: 'setup-correct', latex: numericWork.terms, correct: true },
-          {
-            id: 'setup-first-as-bounce',
-            latex: numericWork.setupWrongFirst,
-            correct: false,
-          },
-          {
-            id: 'setup-wrong-last',
-            latex: numericWork.setupWrongLast,
-            correct: false,
-          },
+          { id: 'interval-setup-correct', latex: numericWork.terms, correct: true },
+          { id: 'interval-setup-drop', latex: numericWork.setupWrongDrop, correct: false },
+          { id: 'interval-setup-wrong-last', latex: numericWork.setupWrongLast, correct: false },
         ],
         shuffleSeed + 31,
-      ),
-    [numericWork, shuffleSeed],
-  )
+      )
+    }
+    return shuffleOptions(
+      [
+        { id: 'setup-correct', latex: numericWork.terms, correct: true },
+        { id: 'setup-first-as-bounce', latex: numericWork.setupWrongFirst, correct: false },
+        { id: 'setup-wrong-last', latex: numericWork.setupWrongLast, correct: false },
+      ],
+      shuffleSeed + 31,
+    )
+  }, [numericWork, mode, timeSubMode, shuffleSeed])
 
-  const conceptOptions = useMemo(
-    () =>
-      shuffleOptions(
+  const conceptOptions = useMemo(() => {
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
+    if (isIntervalMode) {
+      return shuffleOptions(
         [
           {
-            id: 'concept-correct',
+            id: 'interval-concept-correct',
             correct: true,
-            text: 'The first drop is a separate term, while only the bounce intervals form the GP.',
+            text: 'Measuring from the 1st bounce means every term belongs to the GP without an initial drop term.',
           },
           {
-            id: 'concept-same-ratio',
+            id: 'interval-concept-drop',
             correct: false,
-            text: 'Because the common ratio changes at every bounce.',
+            text: 'Because the initial drop time must be added at the end.',
           },
           {
-            id: 'concept-too-many',
+            id: 'interval-concept-inf',
             correct: false,
             text: 'Because there are infinitely many terms before the nth bounce.',
           },
           {
-            id: 'concept-no-formula',
+            id: 'interval-concept-no-formula',
             correct: false,
-            text: 'Because GP sum formulas do not work for motion problems.',
+            text: 'Because GP sum formulas do not work for time mode.',
           },
         ],
         shuffleSeed + 41,
-      ),
-    [shuffleSeed],
-  )
+      )
+    }
+    return shuffleOptions(
+      [
+        {
+          id: 'concept-correct',
+          correct: true,
+          text: 'The first drop is a separate term, while only the bounce intervals form the GP.',
+        },
+        {
+          id: 'concept-same-ratio',
+          correct: false,
+          text: 'Because the common ratio changes at every bounce.',
+        },
+        {
+          id: 'concept-too-many',
+          correct: false,
+          text: 'Because there are infinitely many terms before the nth bounce.',
+        },
+        {
+          id: 'concept-no-formula',
+          correct: false,
+          text: 'Because GP sum formulas do not work for motion problems.',
+        },
+      ],
+      shuffleSeed + 41,
+    )
+  }, [mode, timeSubMode, shuffleSeed])
 
-  const termCountOptions = useMemo(
-    () =>
-      shuffleOptions(
+  const termCountOptions = useMemo(() => {
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
+    if (isIntervalMode) {
+      return shuffleOptions(
         [
-          { id: 'terms-correct', latex: 'n-1', correct: true },
-          { id: 'terms-n', latex: 'n', correct: false },
-          { id: 'terms-n-minus-2', latex: 'n-2', correct: false },
-          { id: 'terms-two-n', latex: '2(n-1)', correct: false },
+          { id: 'interval-terms-correct', latex: 'n-1', correct: true },
+          { id: 'interval-terms-n', latex: 'n', correct: false },
+          { id: 'interval-terms-n-minus-2', latex: 'n-2', correct: false },
+          { id: 'interval-terms-two-n', latex: '2(n-1)', correct: false },
         ],
         shuffleSeed + 51,
-      ),
-    [shuffleSeed],
-  )
+      )
+    }
+    return shuffleOptions(
+      [
+        { id: 'terms-correct', latex: 'n-1', correct: true },
+        { id: 'terms-n', latex: 'n', correct: false },
+        { id: 'terms-n-minus-2', latex: 'n-2', correct: false },
+        { id: 'terms-two-n', latex: '2(n-1)', correct: false },
+      ],
+      shuffleSeed + 51,
+    )
+  }, [mode, timeSubMode, shuffleSeed])
 
-  const finalOptions = useMemo(
-    () =>
-      shuffleOptions(
+  const finalOptions = useMemo(() => {
+    const isIntervalMode = mode === 'time' && timeSubMode === 'interval'
+    if (isIntervalMode) {
+      return shuffleOptions(
         [
-          { id: 'total-correct', latex: numericWork.simplifiedLine, correct: true },
+          { id: 'interval-total-correct', latex: numericWork.simplifiedLine, correct: true },
           {
-            id: 'total-no-initial',
-            latex: `${numericWork.multiplierText}(1-${numericWork.gpRatioText}^{n-1})`,
+            id: 'interval-total-wrong-exp',
+            latex: `${numericWork.multiplierText}(1-${numericWork.gpRatioText}^n)`,
             correct: false,
           },
           {
-            id: 'total-wrong-last',
-            latex: `${numericWork.simplifiedConstantText}-${numericWork.multiplierText}(${numericWork.gpRatioText})^n`,
+            id: 'interval-total-with-drop',
+            latex: `${numericWork.effectiveDropText}+${numericWork.multiplierText}(1-${numericWork.gpRatioText}^{n-1})`,
             correct: false,
           },
           {
-            id: 'total-add-tail',
-            latex: `${numericWork.simplifiedConstantText}+${numericWork.multiplierText}(${numericWork.gpRatioText})^{n-1}`,
+            id: 'interval-total-add',
+            latex: `${numericWork.multiplierText}(1+${numericWork.gpRatioText}^{n-1})`,
             correct: false,
           },
         ],
         shuffleSeed + 61,
-      ),
-    [numericWork, shuffleSeed],
-  )
+      )
+    }
+    return shuffleOptions(
+      [
+        { id: 'total-correct', latex: numericWork.simplifiedLine, correct: true },
+        {
+          id: 'total-no-initial',
+          latex: `${numericWork.multiplierText}(1-${numericWork.gpRatioText}^{n-1})`,
+          correct: false,
+        },
+        {
+          id: 'total-wrong-last',
+          latex: `${numericWork.simplifiedConstantText}-${numericWork.multiplierText}(${numericWork.gpRatioText})^n`,
+          correct: false,
+        },
+        {
+          id: 'total-add-tail',
+          latex: `${numericWork.simplifiedConstantText}+${numericWork.multiplierText}(${numericWork.gpRatioText})^{n-1}`,
+          correct: false,
+        },
+      ],
+      shuffleSeed + 61,
+    )
+  }, [numericWork, mode, timeSubMode, shuffleSeed])
 
   function startAnimation() {
     unlockAudio(bounceAudioRef.current)
@@ -677,393 +895,634 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="intro-band">
-        <div className="title-lockup">
-          <img src="/ball.png" alt="Tennis ball" className="header-ball" />
-          <div>
-            <p className="eyebrow">Geometric Progression</p>
-            <h1>Tennis Ball Bounce Explorer</h1>
-          </div>
-        </div>
-        <div className="mode-toggle" aria-label="Choose exploration mode">
-          <button type="button" className={mode === 'time' ? 'active' : ''} onClick={() => setMode('time')}>
-            Time
-          </button>
-          <button type="button" className={mode === 'distance' ? 'active' : ''} onClick={() => setMode('distance')}>
-            Distance
-          </button>
-        </div>
-      </section>
-
-      <section className="control-strip">
-        <label>
-          <span>{mode === 'time' ? 'Drop time to 1st bounce' : 'Height of ball drop'}</span>
-          {mode === 'time' ? (
-            <>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                step="0.1"
-                value={dropTime}
-                onChange={(event) => setDropTime(Number(event.target.value))}
-              />
-              <strong>{round(dropTime, 1)} s</strong>
-            </>
-          ) : (
-            <>
-              <input
-                type="range"
-                min="0.5"
-                max="10"
-                step="0.1"
-                value={height}
-                onChange={(event) => setHeight(Number(event.target.value))}
-              />
-              <strong>{round(height, 1)} m</strong>
-            </>
-          )}
-        </label>
-        <label>
-          <span>
-            {mode === 'time'
-              ? 'Time factor after each bounce'
-              : 'Height factor to the top after each bounce'}
-          </span>
-          <input
-            type="range"
-            min="0.1"
-            max="0.99"
-            step="0.01"
-            value={ratio}
-            onChange={(event) => setRatio(Number(event.target.value))}
-          />
-          <strong>r = {round(ratio)}</strong>
-        </label>
-        <button type="button" className="start-button" onClick={startAnimation}>
-          START
+      <div className="zoom-controls" aria-label="Zoom controls">
+        <button type="button" className="zoom-btn" onClick={handleZoomOut} title="Zoom Out" aria-label="Zoom Out">
+          –
         </button>
-      </section>
+        <button type="button" className="zoom-reset-btn" onClick={handleZoomReset} title="Reset to 100%">
+          {zoom}%
+        </button>
+        <button type="button" className="zoom-btn" onClick={handleZoomIn} title="Zoom In" aria-label="Zoom In">
+          +
+        </button>
+      </div>
 
-      <section className="stage-panel" aria-label="Animated bounce diagram">
-        {shouldShowPauseOverlay && <div className="pause-overlay">Answer the question below</div>}
-        <svg className="bounce-svg" viewBox={`0 0 ${STAGE_WIDTH} 390`} role="img" aria-label="Animated tennis ball bounce pattern">
-          <defs>
-            <marker id="arrow-start" markerWidth="6" markerHeight="6" refX="1" refY="3" orient="auto">
-              <path d="M6 0 L0 3 L6 6" className="arrow-head" />
-            </marker>
-            <marker id="arrow-end" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <path d="M0 0 L6 3 L0 6" className="arrow-head" />
-            </marker>
-          </defs>
-          <rect x="0" y={GROUND_Y} width={STAGE_WIDTH} height="56" className="ground" />
-          <path className="bounce-trace" d={visibleArcs.main} />
-          <path className="future-trace" d={visibleArcs.future} />
-          {bounceXs.map((x) => (
-            <line key={x} x1={x} x2={x} y1={GROUND_Y} y2="342" className="bounce-marker" />
-          ))}
-          <image
-            href="/ball.png"
-            x={ball.x - 19}
-            y={ball.y - 19}
-            width="38"
-            height="38"
-            className={`ball-image ${ballHidden ? 'hidden' : ''}`}
-          />
-          <text x="18" y="314" className="axis-label">
-            {mode === 'time' ? 'Time' : 'Dist'}
-          </text>
-          <text x="18" y="362" className="axis-label">
-            Bounce
-          </text>
-          <line x1="84" y1="306" x2="146" y2="306" className="interval-line" />
-          <line x1="166" y1="306" x2="256" y2="306" className="interval-line" />
-          <line x1="276" y1="306" x2="366" y2="306" className="interval-line" />
-          <line x1="386" y1="306" x2="476" y2="306" className="interval-line" />
-          <line x1="636" y1="306" x2="706" y2="306" className="interval-line question-line" />
-          <SvgIntervalLabel
-            x="96"
-            y="334"
-            mode={mode}
-            step={0}
-            dropTime={dropTime}
-            height={height}
-            ratio={ratio}
-            visible={visibleIntervals.firstDrop}
-          />
-          <SvgIntervalLabel
-            x="162"
-            y="334"
-            mode={mode}
-            step={1}
-            dropTime={dropTime}
-            height={height}
-            ratio={ratio}
-            visible={visibleIntervals.firstBounce}
-          />
-          <text
-            x="210"
-            y="326"
-            className={`question-label ${animationPhase === 'pausedFirst' && !revealedAnswers.first ? 'show' : ''}`}
-          >
-            ?
-          </text>
-          <SvgIntervalLabel
-            x="272"
-            y="334"
-            mode={mode}
-            step={2}
-            dropTime={dropTime}
-            height={height}
-            ratio={ratio}
-            visible={visibleIntervals.secondBounce}
-          />
-          <text
-            x="320"
-            y="326"
-            className={`question-label ${animationPhase === 'pausedSecond' && !revealedAnswers.second ? 'show' : ''}`}
-          >
-            ?
-          </text>
-          <SvgIntervalLabel
-            x="382"
-            y="334"
-            mode={mode}
-            step={3}
-            dropTime={dropTime}
-            height={height}
-            ratio={ratio}
-            visible={visibleIntervals.thirdBounce}
-          />
-          <text x="555" y="176" className={`dots ${revealState.dots ? 'show' : ''}`}>
-            ...
-          </text>
-          <text x="674" y="326" className={`question-label ${revealState.interval >= 5 ? 'show' : ''}`}>
-            ?
-          </text>
-          <text x="148" y="366" className={`bounce-label ${revealState.bounce >= 1 ? 'show' : ''}`}>
-            1st
-          </text>
-          <text x="258" y="366" className={`bounce-label ${revealState.bounce >= 2 ? 'show' : ''}`}>
-            2nd
-          </text>
-          <text x="368" y="366" className={`bounce-label ${revealState.bounce >= 3 ? 'show' : ''}`}>
-            3rd
-          </text>
-          <text x="478" y="366" className={`bounce-label ${revealState.bounce >= 4 ? 'show' : ''}`}>
-            4th
-          </text>
-          <text x="584" y="366" className={`bounce-label ${revealState.bounce >= 5 ? 'show' : ''}`}>
-            (n-1)th
-          </text>
-          <text x="696" y="366" className={`bounce-label ${revealState.bounce >= 6 ? 'show' : ''}`}>
-            nth
-          </text>
-        </svg>
-      </section>
+      <div className="zoom-scalable-content" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
+        <section className="intro-band">
+          <div className="title-lockup">
+            <img src="/ball.png" alt="Tennis ball" className="header-ball" />
+            <div>
+              <p className="eyebrow">Geometric Progression</p>
+              <h1>Tennis Ball Bounce Explorer</h1>
+            </div>
+          </div>
+          <div className="mode-selection-group">
+            <div className="mode-toggle" aria-label="Choose exploration mode">
+              <button
+                type="button"
+                className={mode === 'time' ? 'active' : ''}
+                onClick={() => {
+                  setMode('time')
+                  setAnimationPhase('idle')
+                  setIsRunning(false)
+                  setElapsed(0)
+                  setHasPlayed(false)
+                }}
+              >
+                Time
+              </button>
+              <button
+                type="button"
+                className={mode === 'distance' ? 'active' : ''}
+                onClick={() => {
+                  setMode('distance')
+                  setAnimationPhase('idle')
+                  setIsRunning(false)
+                  setElapsed(0)
+                  setHasPlayed(false)
+                }}
+              >
+                Distance
+              </button>
+            </div>
+            {mode === 'time' && (
+              <div className="sub-mode-toggle" aria-label="Time mode sub-option">
+                <button
+                  type="button"
+                  className={`sub-option-btn ${timeSubMode === 'drop' ? 'active' : ''}`}
+                  onClick={() => {
+                    setTimeSubMode('drop')
+                    setAnimationPhase('idle')
+                    setIsRunning(false)
+                    setElapsed(0)
+                    setHasPlayed(false)
+                  }}
+                >
+                  Time to 1st Bounce
+                </button>
+                <button
+                  type="button"
+                  className={`sub-option-btn ${timeSubMode === 'interval' ? 'active' : ''}`}
+                  onClick={() => {
+                    setTimeSubMode('interval')
+                    setAnimationPhase('idle')
+                    setIsRunning(false)
+                    setElapsed(0)
+                    setHasPlayed(false)
+                  }}
+                >
+                  Interval (1st → 2nd Bounce)
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
 
-      <section className={`guided-panel ${hasReachedFirstPause ? 'ready' : 'waiting'}`}>
-        {!hasReachedFirstPause ? (
-          <div className="waiting-card">
-            <p className="eyebrow">Guided questions</p>
-            <h2>{isRunning ? 'Watch the bounce carefully.' : 'Press START and watch the pattern first.'}</h2>
-          </div>
-        ) : !firstIntervalCorrect ? (
-          <section className="question-card animated-card" key="q1">
-            <p className="eyebrow">Question 1</p>
-            <p className="given-line">
-              {mode === 'time' ? 'Time from release to first bounce' : 'Distance from release to first bounce'}:{' '}
-              <InlineMath math={numericWork.baseText} />
-              {mode === 'time' ? ' s' : ' m'}; time factor: <InlineMath math={`r=${numericWork.rText}`} />
-            </p>
-            <h2 className="question-prompt">
-              What is the {mode === 'time' ? 'time taken (in sec)' : 'distance travelled (in m)'} between the
-              1st and 2nd bounce?
-            </h2>
-            <div className="mcq-grid">
-              {concreteIntervalOptions.first.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  className={`mcq-option ${firstIntervalChoice === option.id ? 'selected' : ''} ${
-                    firstIntervalChoice === option.id && option.correct ? 'correct' : ''
-                  } ${firstIntervalChoice === option.id && !option.correct ? 'wrong' : ''}`}
-                  onClick={() => chooseFirstInterval(option)}
-                >
-                  <WrappedFormula math={option.latex} />
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : !hasReachedSecondPause ? (
-          <div className="waiting-card animated-card" key="wait-q2">
-            <p className="eyebrow">Guided questions</p>
-            <h2>Watch the next bounce carefully.</h2>
-          </div>
-        ) : !secondIntervalCorrect ? (
-          <section className="question-card animated-card" key="q2">
-            <p className="eyebrow">Question 2</p>
-            <h2 className="question-prompt">
-              What is the {mode === 'time' ? 'time taken (in sec)' : 'distance travelled (in m)'} between the
-              2nd and 3rd bounce?
-            </h2>
-            <div className="mcq-grid">
-              {concreteIntervalOptions.second.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  className={`mcq-option ${secondIntervalChoice === option.id ? 'selected' : ''} ${
-                    secondIntervalChoice === option.id && option.correct ? 'correct' : ''
-                  } ${secondIntervalChoice === option.id && !option.correct ? 'wrong' : ''}`}
-                  onClick={() => chooseSecondInterval(option)}
-                >
-                  <BlockMath math={option.latex} />
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : !hasReachedNthPause ? (
-          <div className="waiting-card animated-card" key="wait-general">
-            <p className="eyebrow">Guided questions</p>
-            <h2>Watch until the nth bounce.</h2>
-          </div>
-        ) : !mcqCorrect ? (
-          <section className="question-card animated-card" key="q3">
-            <p className="eyebrow">Question 3</p>
-            <p className="given-line">
-              {mode === 'time' ? 'Time from release to first bounce' : 'Distance from release to first bounce'}:{' '}
-              <InlineMath math={numericWork.baseText} />
-              {mode === 'time' ? ' s' : ' m'}; time factor: <InlineMath math={`r=${numericWork.rText}`} />
-            </p>
-            <h2 className="question-prompt">
-              What is the {mode === 'time' ? 'time taken' : 'distance travelled'} between the (n-1)th and nth
-              bounce?
-            </h2>
-            <div className="mcq-grid">
-              {mcqOptions.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  className={`mcq-option ${mcqChoice === option.id ? 'selected' : ''} ${
-                    mcqChoice === option.id && option.correct ? 'correct' : ''
-                  } ${mcqChoice === option.id && !option.correct ? 'wrong' : ''}`}
-                  onClick={() => chooseMcq(option)}
-                >
-                  <BlockMath math={option.latex} />
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : !hasPlayed ? (
-          <div className="waiting-card animated-card" key="wait-final">
-            <p className="eyebrow">Guided questions</p>
-            <h2>Watch the final bounce in the diagram.</h2>
-          </div>
-        ) : !setupCorrect ? (
-          <section className="question-card animated-card" key="q4">
-            <p className="eyebrow">Question 4</p>
-            <h2>Which expression represents the total {mode} up to the nth bounce?</h2>
-            <div className="mcq-grid stacked-options">
-              {totalOptions.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  className={`mcq-option ${setupChoice === option.id ? 'selected' : ''} ${
-                    setupChoice === option.id && option.correct ? 'correct' : ''
-                  } ${setupChoice === option.id && !option.correct ? 'wrong' : ''}`}
-                  onClick={() => chooseSetup(option)}
-                >
-                  <BlockMath math={option.latex} />
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : !termCountCorrect ? (
-          <section className="question-card animated-card" key="q5">
-            <p className="eyebrow">Question 5</p>
-            <h2>How many terms are in the GP sum highlighted in yellow?</h2>
-            <div className="math-stack term-checkpoint">
-              <div className="formula-heading">
-                {mode === 'time'
-                  ? 'Total time taken till nth bounce'
-                  : 'Total distance travelled till nth bounce'}
-              </div>
-              <div className="formula-row">
-                <InlineMath math={`=${numericWork.terms}`} />
-              </div>
-              <div className="formula-row">
-                <InlineMath
-                  math={`=${numericWork.baseText}+2(${numericWork.baseText})(${numericWork.firstPower})[`}
+        <section className="control-strip">
+          <label>
+            <span>
+              {mode === 'time'
+                ? timeSubMode === 'drop'
+                  ? 'Drop time to 1st bounce'
+                  : '1st Bounce Interval (1st → 2nd)'
+                : 'Height of ball drop'}
+            </span>
+            {mode === 'time' ? (
+              timeSubMode === 'drop' ? (
+                <>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    step="0.1"
+                    value={dropTime}
+                    onChange={(event) => setDropTime(Number(event.target.value))}
+                  />
+                  <strong>{round(dropTime, 1)} s</strong>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="10"
+                    step="0.1"
+                    value={firstInterval}
+                    onChange={(event) => setFirstInterval(Number(event.target.value))}
+                  />
+                  <strong>T₁ = {round(firstInterval, 1)} s</strong>
+                </>
+              )
+            ) : (
+              <>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="10"
+                  step="0.1"
+                  value={height}
+                  onChange={(event) => setHeight(Number(event.target.value))}
                 />
-                <span className="gp-highlight">
-                  <InlineMath math={numericWork.bracketComplete} />
-                </span>
-                <InlineMath math={']'} />
+                <strong>{round(height, 1)} m</strong>
+              </>
+            )}
+          </label>
+          <label>
+            <span>
+              {mode === 'time'
+                ? 'Time factor after each bounce'
+                : 'Height factor to the top after each bounce'}
+            </span>
+            <input
+              type="range"
+              min="0.1"
+              max="0.99"
+              step="0.01"
+              value={ratio}
+              onChange={(event) => setRatio(Number(event.target.value))}
+            />
+            <strong>r = {round(ratio)}</strong>
+          </label>
+          <button type="button" className="start-button" onClick={startAnimation}>
+            START
+          </button>
+        </section>
+
+        <section className="stage-panel" aria-label="Animated bounce diagram">
+          {shouldShowPauseOverlay && <div className="pause-overlay">Answer the question below</div>}
+          <svg className="bounce-svg" viewBox={`0 0 ${STAGE_WIDTH} 390`} role="img" aria-label="Animated tennis ball bounce pattern">
+            <defs>
+              <marker id="arrow-start" markerWidth="6" markerHeight="6" refX="1" refY="3" orient="auto">
+                <path d="M6 0 L0 3 L6 6" className="arrow-head" />
+              </marker>
+              <marker id="arrow-end" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0 0 L6 3 L0 6" className="arrow-head" />
+              </marker>
+            </defs>
+            <rect x="0" y={GROUND_Y} width={STAGE_WIDTH} height="56" className="ground" />
+            <path className="bounce-trace" d={visibleArcs.main} />
+            <path className="future-trace" d={visibleArcs.future} />
+            {highlightedArcPath && <path className="highlighted-bounce-arc" d={highlightedArcPath} />}
+            {bounceXs.map((x) => (
+              <line key={x} x1={x} x2={x} y1={GROUND_Y} y2="342" className="bounce-marker" />
+            ))}
+            <image
+              href="/ball.png"
+              x={ball.x - 19}
+              y={ball.y - 19}
+              width="38"
+              height="38"
+              className={`ball-image ${ballHidden ? 'hidden' : ''}`}
+            />
+            {mode === 'time' ? (
+              <text x="18" y="314" className="axis-label">
+                Time
+              </text>
+            ) : (
+              <text x="18" y="286" className="axis-label distance-mode">
+                <tspan x="18" dy="0">Vertical</tspan>
+                <tspan x="18" dy="16">distance</tspan>
+                <tspan x="18" dy="16">travelled</tspan>
+              </text>
+            )}
+            <text x="18" y="362" className="axis-label">
+              Bounce
+            </text>
+            {mode === 'time' && (
+              <>
+                <line x1="84" y1="306" x2="146" y2="306" className="interval-line" />
+                <line x1="166" y1="306" x2="256" y2="306" className="interval-line" />
+                <line x1="276" y1="306" x2="366" y2="306" className="interval-line" />
+                <line x1="386" y1="306" x2="476" y2="306" className="interval-line" />
+                <line x1="636" y1="306" x2="706" y2="306" className="interval-line question-line" />
+              </>
+            )}
+            <SvgIntervalLabel
+              x="114"
+              y="334"
+              mode={mode}
+              timeSubMode={timeSubMode}
+              step={0}
+              dropTime={dropTime}
+              firstInterval={firstInterval}
+              height={height}
+              ratio={ratio}
+              visible={visibleIntervals.firstDrop}
+            />
+
+            {/* Position x=211 (1st -> 2nd bounce) */}
+            {mode === 'time' && timeSubMode === 'interval' ? (
+              <SvgIntervalLabel
+                x="211"
+                y="334"
+                mode={mode}
+                timeSubMode={timeSubMode}
+                step={1}
+                dropTime={dropTime}
+                firstInterval={firstInterval}
+                height={height}
+                ratio={ratio}
+                visible={revealState.interval >= 1}
+              />
+            ) : (
+              <>
+                <text
+                  x="211"
+                  y="326"
+                  textAnchor="middle"
+                  className={`question-label ${animationPhase === 'pausedFirst' && !revealedAnswers.first ? 'show' : ''}`}
+                >
+                  ?
+                </text>
+                <SvgIntervalLabel
+                  x="211"
+                  y="334"
+                  mode={mode}
+                  timeSubMode={timeSubMode}
+                  step={1}
+                  dropTime={dropTime}
+                  firstInterval={firstInterval}
+                  height={height}
+                  ratio={ratio}
+                  visible={visibleIntervals.firstBounce}
+                />
+              </>
+            )}
+
+            {/* Position x=321 (2nd -> 3rd bounce) */}
+            {mode === 'time' && timeSubMode === 'interval' ? (
+              <>
+                <text
+                  x="321"
+                  y="326"
+                  textAnchor="middle"
+                  className={`question-label ${animationPhase === 'pausedFirst' && !revealedAnswers.first ? 'show' : ''}`}
+                >
+                  ?
+                </text>
+                <SvgIntervalLabel
+                  x="321"
+                  y="334"
+                  mode={mode}
+                  timeSubMode={timeSubMode}
+                  step={2}
+                  dropTime={dropTime}
+                  firstInterval={firstInterval}
+                  height={height}
+                  ratio={ratio}
+                  visible={revealedAnswers.first || hasPlayed}
+                />
+              </>
+            ) : (
+              <>
+                <text
+                  x="321"
+                  y="326"
+                  textAnchor="middle"
+                  className={`question-label ${animationPhase === 'pausedSecond' && !revealedAnswers.second ? 'show' : ''}`}
+                >
+                  ?
+                </text>
+                <SvgIntervalLabel
+                  x="321"
+                  y="334"
+                  mode={mode}
+                  timeSubMode={timeSubMode}
+                  step={2}
+                  dropTime={dropTime}
+                  firstInterval={firstInterval}
+                  height={height}
+                  ratio={ratio}
+                  visible={visibleIntervals.secondBounce}
+                />
+              </>
+            )}
+
+            {/* Position x=431 (3rd -> 4th bounce) */}
+            {mode === 'time' && timeSubMode === 'interval' ? (
+              <>
+                <text
+                  x="431"
+                  y="326"
+                  textAnchor="middle"
+                  className={`question-label ${animationPhase === 'pausedSecond' && !revealedAnswers.second ? 'show' : ''}`}
+                >
+                  ?
+                </text>
+                <SvgIntervalLabel
+                  x="431"
+                  y="334"
+                  mode={mode}
+                  timeSubMode={timeSubMode}
+                  step={3}
+                  dropTime={dropTime}
+                  firstInterval={firstInterval}
+                  height={height}
+                  ratio={ratio}
+                  visible={revealedAnswers.second || hasPlayed}
+                />
+              </>
+            ) : (
+              <SvgIntervalLabel
+                x="431"
+                y="334"
+                mode={mode}
+                timeSubMode={timeSubMode}
+                step={3}
+                dropTime={dropTime}
+                firstInterval={firstInterval}
+                height={height}
+                ratio={ratio}
+                visible={visibleIntervals.thirdBounce}
+              />
+            )}
+
+            <text x="555" y="176" textAnchor="middle" className={`dots ${revealState.dots ? 'show' : ''}`}>
+              ...
+            </text>
+            <text x="671" y="326" textAnchor="middle" className={`question-label ${revealState.interval >= 5 ? 'show' : ''}`}>
+              ?
+            </text>
+            <text x="156" y="366" textAnchor="middle" className={`bounce-label ${revealState.bounce >= 1 ? 'show' : ''}`}>
+              1st
+            </text>
+            <text x="266" y="366" textAnchor="middle" className={`bounce-label ${revealState.bounce >= 2 ? 'show' : ''}`}>
+              2nd
+            </text>
+            <text x="376" y="366" textAnchor="middle" className={`bounce-label ${revealState.bounce >= 3 ? 'show' : ''}`}>
+              3rd
+            </text>
+            <text x="486" y="366" textAnchor="middle" className={`bounce-label ${revealState.bounce >= 4 ? 'show' : ''}`}>
+              4th
+            </text>
+            <text x="626" y="366" textAnchor="middle" className={`bounce-label ${revealState.bounce >= 5 ? 'show' : ''}`}>
+              (n-1)th
+            </text>
+            <text x="716" y="366" textAnchor="middle" className={`bounce-label ${revealState.bounce >= 6 ? 'show' : ''}`}>
+              nth
+            </text>
+          </svg>
+        </section>
+
+        <section className={`guided-panel ${hasReachedFirstPause ? 'ready' : 'waiting'}`}>
+          {!hasReachedFirstPause ? (
+            <div className="waiting-card">
+              <p className="eyebrow">Guided questions</p>
+              <h2>{isRunning ? 'Watch the bounce carefully.' : 'Press START and watch the pattern first.'}</h2>
+            </div>
+          ) : !firstIntervalCorrect ? (
+            <section className="question-card animated-card" key="q1">
+              <p className="eyebrow">Question 1</p>
+              <p className="given-line">
+                {mode === 'time' && timeSubMode === 'interval' ? (
+                  <>
+                    1st bounce interval <InlineMath math="T_1" />: <InlineMath math={numericWork.baseText} /> s; time factor:{' '}
+                    <InlineMath math={`r=${numericWork.rText}`} />
+                  </>
+                ) : (
+                  <>
+                    {mode === 'time' ? 'Time from release to first bounce' : 'Distance from release to first bounce'}:{' '}
+                    <InlineMath math={numericWork.baseText} />
+                    {mode === 'time' ? ' s' : ' m'}; factor: <InlineMath math={`r=${numericWork.rText}`} />
+                  </>
+                )}
+              </p>
+              <h2 className="question-prompt">
+                {mode === 'time' && timeSubMode === 'interval'
+                  ? 'What is the time taken (in sec) between the 2nd and 3rd bounce?'
+                  : `What is the ${mode === 'time' ? 'time taken (in sec)' : 'distance travelled (in m)'} between the 1st and 2nd bounce?`}
+              </h2>
+              <div className="mcq-grid">
+                {concreteIntervalOptions.first.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`mcq-option ${firstIntervalChoice === option.id ? 'selected' : ''} ${
+                      firstIntervalChoice === option.id && option.correct ? 'correct' : ''
+                    } ${firstIntervalChoice === option.id && !option.correct ? 'wrong' : ''}`}
+                    onClick={() => chooseFirstInterval(option)}
+                  >
+                    <WrappedFormula math={option.latex} />
+                  </button>
+                ))}
               </div>
+            </section>
+          ) : !hasReachedSecondPause ? (
+            <div className="waiting-card animated-card" key="wait-q2">
+              <p className="eyebrow">Guided questions</p>
+              <h2>Watch the next bounce carefully.</h2>
             </div>
-            <div className="mcq-grid compact-mcq delayed-options">
-              {termCountOptions.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  className={`mcq-option ${termCountChoice === option.id ? 'selected' : ''} ${
-                    termCountChoice === option.id && option.correct ? 'correct' : ''
-                  } ${termCountChoice === option.id && !option.correct ? 'wrong' : ''}`}
-                  onClick={() => chooseTermCount(option)}
-                >
-                  <BlockMath math={option.latex} />
-                </button>
-              ))}
+          ) : !secondIntervalCorrect ? (
+            <section className="question-card animated-card" key="q2">
+              <p className="eyebrow">Question 2</p>
+              <h2 className="question-prompt">
+                {mode === 'time' && timeSubMode === 'interval'
+                  ? 'What is the time taken (in sec) between the 3rd and 4th bounce?'
+                  : `What is the ${mode === 'time' ? 'time taken (in sec)' : 'distance travelled (in m)'} between the 2nd and 3rd bounce?`}
+              </h2>
+              <div className="mcq-grid">
+                {concreteIntervalOptions.second.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`mcq-option ${secondIntervalChoice === option.id ? 'selected' : ''} ${
+                      secondIntervalChoice === option.id && option.correct ? 'correct' : ''
+                    } ${secondIntervalChoice === option.id && !option.correct ? 'wrong' : ''}`}
+                    onClick={() => chooseSecondInterval(option)}
+                  >
+                    <BlockMath math={option.latex} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : !hasReachedNthPause ? (
+            <div className="waiting-card animated-card" key="wait-general">
+              <p className="eyebrow">Guided questions</p>
+              <h2>Watch until the nth bounce.</h2>
             </div>
-          </section>
-        ) : !conceptCorrect ? (
-          <section className="question-card animated-card" key="q6">
-            <p className="eyebrow">Question 6</p>
-            <div className="plain-formula-line">
-              <span>{mode === 'time' ? 'Total time taken' : 'Total distance travelled'} = </span>
-              <InlineMath math={numericWork.terms} />
+          ) : !mcqCorrect ? (
+            <section className="question-card animated-card" key="q3">
+              <p className="eyebrow">Question 3</p>
+              <p className="given-line">
+                {mode === 'time' && timeSubMode === 'interval' ? (
+                  <>
+                    1st bounce interval <InlineMath math="T_1" />: <InlineMath math={numericWork.baseText} /> s; time factor:{' '}
+                    <InlineMath math={`r=${numericWork.rText}`} />
+                  </>
+                ) : (
+                  <>
+                    {mode === 'time' ? 'Time from release to first bounce' : 'Distance from release to first bounce'}:{' '}
+                    <InlineMath math={numericWork.baseText} />
+                    {mode === 'time' ? ' s' : ' m'}; factor: <InlineMath math={`r=${numericWork.rText}`} />
+                  </>
+                )}
+              </p>
+              <h2 className="question-prompt">
+                {mode === 'time' && timeSubMode === 'interval'
+                  ? 'What is the time taken between the n-th and (n+1)-th bounce?'
+                  : `What is the ${mode === 'time' ? 'time taken' : 'distance travelled'} between the (n-1)th and nth bounce?`}
+              </h2>
+              <div className="mcq-grid">
+                {mcqOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`mcq-option ${mcqChoice === option.id ? 'selected' : ''} ${
+                      mcqChoice === option.id && option.correct ? 'correct' : ''
+                    } ${mcqChoice === option.id && !option.correct ? 'wrong' : ''}`}
+                    onClick={() => chooseMcq(option)}
+                  >
+                    <BlockMath math={option.latex} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : !hasPlayed ? (
+            <div className="waiting-card animated-card" key="wait-final">
+              <p className="eyebrow">Guided questions</p>
+              <h2>Watch the final bounce in the diagram.</h2>
             </div>
-            <h2>Why should we not apply the GP sum formula directly to the whole expression?</h2>
-            <div className="concept-grid">
-              {conceptOptions.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  className={`mcq-option concept-option ${conceptChoice === option.id ? 'selected' : ''} ${
-                    conceptChoice === option.id && option.correct ? 'correct' : ''
-                  } ${conceptChoice === option.id && !option.correct ? 'wrong' : ''}`}
-                  onClick={() => chooseConcept(option)}
-                >
-                  {option.text}
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : (
-          <section className="question-card animated-card" key="q7">
-            <p className="eyebrow">Question 7</p>
-            <div className="plain-formula-line">
-              <span>{mode === 'time' ? 'Total time taken' : 'Total distance travelled'} = </span>
-              <InlineMath math={numericWork.terms} />
-            </div>
-            <h2>What is the final simplified expression in terms of n?</h2>
-            <div className="mcq-grid">
-              {finalOptions.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  className={`mcq-option ${finalChoice === option.id ? 'selected' : ''} ${
-                    finalChoice === option.id && option.correct ? 'correct' : ''
-                  } ${finalChoice === option.id && !option.correct ? 'wrong' : ''}`}
-                  onClick={() => chooseTotal(option)}
-                >
-                  <BlockMath math={option.latex} />
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-      </section>
+          ) : !setupCorrect ? (
+            <section className="question-card animated-card" key="q4">
+              <p className="eyebrow">Question 4</p>
+              <h2>
+                {mode === 'time' && timeSubMode === 'interval'
+                  ? 'Which expression represents the total time from the 1st bounce to the nth bounce (S₁→ₙ)?'
+                  : `Which expression represents the total ${mode} up to the nth bounce?`}
+              </h2>
+              <div className="mcq-grid stacked-options">
+                {totalOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`mcq-option ${setupChoice === option.id ? 'selected' : ''} ${
+                      setupChoice === option.id && option.correct ? 'correct' : ''
+                    } ${setupChoice === option.id && !option.correct ? 'wrong' : ''}`}
+                    onClick={() => chooseSetup(option)}
+                  >
+                    <BlockMath math={option.latex} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : !termCountCorrect ? (
+            <section className="question-card animated-card" key="q5">
+              <p className="eyebrow">Question 5</p>
+              <h2>How many terms are in the GP sum highlighted in yellow?</h2>
+              <div className="math-stack term-checkpoint">
+                <div className="formula-heading">
+                  {mode === 'time' && timeSubMode === 'interval'
+                    ? 'Total time taken from 1st to nth bounce (S₁→ₙ)'
+                    : mode === 'time'
+                      ? 'Total time taken till nth bounce'
+                      : 'Total distance travelled till nth bounce'}
+                </div>
+                <div className="formula-row">
+                  <InlineMath math={`=${numericWork.terms}`} />
+                </div>
+                <div className="formula-row">
+                  {mode === 'time' && timeSubMode === 'interval' ? (
+                    <>
+                      <InlineMath math={`=${numericWork.baseText}[`} />
+                      <span className="gp-highlight">
+                        <InlineMath math={numericWork.bracketComplete} />
+                      </span>
+                      <InlineMath math={']'} />
+                    </>
+                  ) : (
+                    <>
+                      <InlineMath
+                        math={`=${numericWork.baseText}+2(${numericWork.baseText})(${numericWork.firstPower})[`}
+                      />
+                      <span className="gp-highlight">
+                        <InlineMath math={numericWork.bracketComplete} />
+                      </span>
+                      <InlineMath math={']'} />
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="mcq-grid compact-mcq delayed-options">
+                {termCountOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`mcq-option ${termCountChoice === option.id ? 'selected' : ''} ${
+                      termCountChoice === option.id && option.correct ? 'correct' : ''
+                    } ${termCountChoice === option.id && !option.correct ? 'wrong' : ''}`}
+                    onClick={() => chooseTermCount(option)}
+                  >
+                    <BlockMath math={option.latex} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : !conceptCorrect && !(mode === 'time' && timeSubMode === 'interval') ? (
+            <section className="question-card animated-card" key="q6">
+              <p className="eyebrow">Question 6</p>
+              <div className="plain-formula-line">
+                <span>
+                  {mode === 'time' ? 'Total time taken' : 'Total distance travelled'}{' '}
+                  ={' '}
+                </span>
+                <InlineMath math={numericWork.terms} />
+              </div>
+              <h2>Why should we not apply the GP sum formula directly to the whole expression?</h2>
+              <div className="concept-grid">
+                {conceptOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`mcq-option concept-option ${conceptChoice === option.id ? 'selected' : ''} ${
+                      conceptChoice === option.id && option.correct ? 'correct' : ''
+                    } ${conceptChoice === option.id && !option.correct ? 'wrong' : ''}`}
+                    onClick={() => chooseConcept(option)}
+                  >
+                    {option.text}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <section className="question-card animated-card" key="q7">
+              <p className="eyebrow">
+                {mode === 'time' && timeSubMode === 'interval' ? 'Question 6' : 'Question 7'}
+              </p>
+              <div className="plain-formula-line">
+                <span>
+                  {mode === 'time' && timeSubMode === 'interval'
+                    ? 'Total time (1st to nth bounce)'
+                    : mode === 'time'
+                      ? 'Total time taken'
+                      : 'Total distance travelled'}{' '}
+                  ={' '}
+                </span>
+                <InlineMath math={numericWork.terms} />
+              </div>
+              <h2>
+                {mode === 'time' && timeSubMode === 'interval'
+                  ? 'What is the final simplified total time formula from the 1st bounce to the nth bounce (S₁→ₙ)?'
+                  : 'What is the final simplified expression in terms of n?'}
+              </h2>
+              <div className="mcq-grid">
+                {finalOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`mcq-option ${finalChoice === option.id ? 'selected' : ''} ${
+                      finalChoice === option.id && option.correct ? 'correct' : ''
+                    } ${finalChoice === option.id && !option.correct ? 'wrong' : ''}`}
+                    onClick={() => chooseTotal(option)}
+                  >
+                    <BlockMath math={option.latex} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+        </section>
+      </div>
+
       {answerPopup && (
         <div className="answer-modal-backdrop" role="dialog" aria-modal="true" aria-live="assertive">
           <div className={`answer-modal ${answerPopup.correct ? 'correct' : 'wrong'}`}>
